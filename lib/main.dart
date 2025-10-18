@@ -8,28 +8,71 @@ class FinanceApp extends StatelessWidget { const FinanceApp({super.key});
 
 @override Widget build(BuildContext context) { return MaterialApp( title: 'Family Finance', debugShowCheckedModeBanner: false, theme: ThemeData( useMaterial3: true, colorSchemeSeed: Colors.teal, fontFamily: 'Roboto', ), home: const RootPage(), ); } }
 
-// ===== Models =====
-
+ // ===== Models =====
 enum EntryType { income, expense, saving, investment }
-
 enum SavingCurrency { irr, usd }
-
 enum InvestmentType { gold, stocks, crypto, other }
 
-class FinanceEntry { final String id; final EntryType type; final DateTime date; final double amount; final String? note;
+class FinanceEntry {
+  final String id;
+  final EntryType type;
+  final DateTime date;
+  final double amount;
+  final String? note;
 
-// Expense-only final String? expenseCategory;
+  // Expense-only
+  final String? expenseCategory;
 
-// Saving-only final SavingCurrency? savingCurrency; // irr/usd final double? savingDelta; // positive for add, negative for withdraw
+  // Saving-only
+  final SavingCurrency? savingCurrency; // irr/usd
+  final double? savingDelta;            // + افزایش، - برداشت
 
-// Investment-only final InvestmentType? investmentType;
+  // Investment-only
+  final InvestmentType? investmentType;
 
-FinanceEntry({ required this.id, required this.type, required this.date, required this.amount, this.note, this.expenseCategory, this.savingCurrency, this.savingDelta, this.investmentType, });
+  FinanceEntry({
+    required this.id,
+    required this.type,
+    required this.date,
+    required this.amount,
+    this.note,
+    this.expenseCategory,
+    this.savingCurrency,
+    this.savingDelta,
+    this.investmentType,
+  });
 
-Map<String, dynamic> toJson() => { 'id': id, 'type': type.name, 'date': date.toIso8601String(), 'amount': amount, 'note': note, 'expenseCategory': expenseCategory, 'savingCurrency': savingCurrency?.name, 'savingDelta': savingDelta, 'investmentType': investmentType?.name, };
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.name,
+        'date': date.toIso8601String(),
+        'amount': amount,
+        'note': note,
+        'expenseCategory': expenseCategory,
+        'savingCurrency': savingCurrency?.name,
+        'savingDelta': savingDelta,
+        'investmentType': investmentType?.name,
+      };
 
-factory FinanceEntry.fromJson(Map<String, dynamic> j) => FinanceEntry( id: j['id'], type: EntryType.values.firstWhere((e) => e.name == j['type']), date: DateTime.parse(j['date']), amount: (j['amount'] as num).toDouble(), note: j['note'], expenseCategory: j['expenseCategory'], savingCurrency: j['savingCurrency'] == null ? null : SavingCurrency.values .firstWhere((e) => e.name == j['savingCurrency']), savingDelta: j['savingDelta'] == null ? null : (j['savingDelta'] as num).toDouble(), investmentType: j['investmentType'] == null ? null : InvestmentType.values .firstWhere((e) => e.name == j['investmentType']), ); }
-
+  factory FinanceEntry.fromJson(Map<String, dynamic> j) => FinanceEntry(
+        id: j['id'],
+        type: EntryType.values.firstWhere((e) => e.name == j['type']),
+        date: DateTime.parse(j['date']),
+        amount: (j['amount'] as num).toDouble(),
+        note: j['note'],
+        expenseCategory: j['expenseCategory'],
+        savingCurrency: j['savingCurrency'] == null
+            ? null
+            : SavingCurrency.values
+                .firstWhere((e) => e.name == j['savingCurrency']),
+        savingDelta:
+            j['savingDelta'] == null ? null : (j['savingDelta'] as num).toDouble(),
+        investmentType: j['investmentType'] == null
+            ? null
+            : InvestmentType.values
+                .firstWhere((e) => e.name == j['investmentType']),
+      );
+}
 // ===== Persistence ===== class Store { static const _k = 'finance_entries';
 
 static Future<List<FinanceEntry>> load() async { final sp = await SharedPreferences.getInstance(); final raw = sp.getString(_k); if (raw == null) return []; final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>(); return list.map(FinanceEntry.fromJson).toList() ..sort((a, b) => b.date.compareTo(a.date)); }
@@ -304,5 +347,30 @@ return Scaffold(
 
 } }
 
-class SettingsPage extends StatelessWidget { final Future<void> Function()? onClear; // clears all data (use carefully) const SettingsPage({super.key, this.onClear}); @override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('تنظیمات')), body: ListView( padding: const EdgeInsets.all(16), children: [ ListTile( leading: const Icon(Icons.info_outline), title: const Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'), subtitle: const Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'), ), const SizedBox(height: 12), FilledButton.tonalIcon( onPressed: onClear, icon: const Icon(Icons.delete_forever), label: const Text('حذف همه داده‌ها'), ), ], ), ); } }
+class SettingsPage extends StatelessWidget {
+  final Future<void> Function()? onClear; // clears all data (use carefully)
+  const SettingsPage({super.key, this.onClear});
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تنظیمات')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'),
+            subtitle: const Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('حذف همه داده‌ها'),
+          ),
+        ],
+      ),
+    );
+  }
+}
