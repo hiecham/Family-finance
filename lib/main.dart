@@ -373,4 +373,44 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
+// ===== Storage helper =====
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class Store {
+  static Future<void> save(List<FinanceEntry> entries) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = entries.map((e) => jsonEncode(e.toJson())).toList();
+    await prefs.setStringList('entries', data);
+  }
+
+  static Future<List<FinanceEntry>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getStringList('entries') ?? [];
+    return data.map((e) => FinanceEntry.fromJson(jsonDecode(e))).toList();
+  }
+
+  static Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('entries');
+  }
+}
+
+// ===== Root Page State helpers =====
+
+class AddEntryPage extends StatelessWidget {
+  final void Function(FinanceEntry) onAdd;
+
+  const AddEntryPage({super.key, required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('افزودن تراکنش جدید')),
+      body: Center(
+        child: Text('صفحه افزودن تراکنش هنوز طراحی نشده است.'),
+      ),
+    );
+  }
+}
 }
