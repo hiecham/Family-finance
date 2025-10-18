@@ -26,6 +26,10 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 👇 این خط جدید همه‌ی پوشه‌های پروژه (android/ و ...) را می‌سازد
+      - name: Create Flutter project scaffolding (android only)
+        run: flutter create . --platforms=android --project-name family_finance --org com.familyfinance
+
       - name: Flutter pub get
         run: flutter pub get
 
