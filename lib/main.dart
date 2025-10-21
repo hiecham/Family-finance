@@ -337,26 +337,138 @@ class GoalsStore { static const _k = 'purchase_goals'; static Future<List<Purcha
 
 static Future<void> save(List<PurchaseGoal> goals) async { final sp = await SharedPreferences.getInstance(); final raw = jsonEncode(goals.map((g) => g.toJson()).toList()); await sp.setString(_k, raw); } }
 
-class GoalsPage extends StatefulWidget { const GoalsPage({super.key}); @override State<GoalsPage> createState() => _GoalsPageState(); }
+// ===== Goals (Shopping targets) =====
+class GoalsPage extends StatefulWidget {
+  final List<Goal> goals;
+  final void Function(String id) onDelete;
+  final void Function(String id, bool? done) onToggle;
 
-class _GoalsPageState extends State<GoalsPage> { List<PurchaseGoal> goals = [];
+  const GoalsPage({
+    super.key,
+    required this.goals,
+    required this.onDelete,
+    required this.onToggle,
+  });
 
-@override void initState() { super.initState(); _load(); }
+  @override
+  State<GoalsPage> createState() => _GoalsPageState();
+}
 
-Future<void> _load() async { goals = await GoalsStore.load(); setState(() {}); }
+class _GoalsPageState extends State<GoalsPage> {
+  void _openAddDialog() async {
+    final titleCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('هدف خرید جدید'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'عنوان')),
+            const SizedBox(height: 8),
+            TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'توضیح (اختیاری)')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('ثبت')),
+        ],
+      ),
+    );
+    if (ok == true && titleCtrl.text.trim().isNotEmpty) {
+      final g = Goal(
+        id: UniqueKey().toString(),
+        title: titleCtrl.text.trim(),
+        note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        done: false,
+      );
+      final list = [...goals, g];
+      await Store.saveGoals(list);
+      setState(() => goals = list);
+    }
+  }
 
-Future<void> _addGoal() async { final titleCtrl = TextEditingController(); final noteCtrl = TextEditingController(); final ok = await showDialog<bool>( context: context, builder: (c) => AlertDialog( title: const Text('هدف خرید جدید'), content: Column( mainAxisSize: MainAxisSize.min, children: [ TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'عنوان')), const SizedBox(height: 8), TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'یادداشت (اختیاری)')), ], ), actions: [ TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('انصراف')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('ثبت')), ], ), ); if (ok != true) return; if (titleCtrl.text.trim().isEmpty) return; final g = PurchaseGoal( id: UniqueKey().toString(), title: titleCtrl.text.trim(), note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(), ); goals = [...goals, g]; await GoalsStore.save(goals); setState(() {}); }
+  List<Goal> goals = [];
 
-Future<void> _toggleDone(PurchaseGoal g, bool v) async { g.done = v; await GoalsStore.save(goals); setState(() {}); }
+  @override
+  void initState() {
+    super.initState();
+    goals = widget.goals;
+  }
 
-Future<void> _delete(String id) async { goals = goals.where((e) => e.id != id).toList(); await GoalsStore.save(goals); setState(() {}); }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('اهداف خرید')),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          if (goals.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Center(child: Text('فعلاً چیزی روی لیست نیست. روی + بزنید.')),
+            )
+          else
+            ...goals.map((g) => Dismissible(
+                  key: ValueKey(g.id),
+                  background: Container(color: Colors.redAccent),
+                  onDismissed: (_) => widget.onDelete(g.id),
+                  child: CheckboxListTile(
+                    value: g.done,
+                    onChanged: (v) => widget.onToggle(g.id, v),
+                    title: Text(
+                      g.title,
+                      style: TextStyle(
+                        decoration: g.done ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    subtitle: g.note == null || g.note!.isEmpty ? null : Text(g.note!),
+                  ),
+                )),
+        ],
+      ),
+      // دکمه + کمی بالاتر از نوار پایینی
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 72),
+        child: FloatingActionButton.large(
+          onPressed: _openAddDialog,
+          child: const Icon(Icons.add),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+}
 
-@override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('اهداف خرید')), body: ListView( padding: const EdgeInsets.all(12), children: [ if (goals.isEmpty) const Padding( padding: EdgeInsets.only(top: 24), child: Center(child: Text('هنوز هدفی ثبت نشده. روی + بزنید')), ) else ...goals.map((g) => Dismissible( key: ValueKey(g.id), background: Container(color: Colors.redAccent), onDismissed: (_) => _delete(g.id), child: CheckboxListTile( value: g.done, onChanged: (v) => _toggleDone(g, v ?? false), title: Text( g.title, style: TextStyle( decoration: g.done ? TextDecoration.lineThrough : TextDecoration.none, ), ), subtitle: g.note == null ? null : Text(g.note!), ), )), const SizedBox(height: 88), ], ), floatingActionButton: Padding( padding: const EdgeInsets.only(bottom: 72), child: FloatingActionButton( onPressed: _addGoal, child: const Icon(Icons.add), ), ), floatingActionButtonLocation: FloatingActionButtonLocation.endFloat, ); } }
-
-                             // ===== Settings =====
+// ===== Settings =====
 class SettingsPage extends StatelessWidget {
   final Future<void> Function()? onClear; // clears all data (use carefully)
   const SettingsPage({super.key, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تنظیمات')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('دسته‌بندی‌ها فعلاً ثابت هستند'),
+            subtitle: const Text('در نسخه بعدی امکان افزودن دسته جدید اضافه می‌شود.'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('حذف همه داده‌ها'),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
   @override
   Widget build(BuildContext context) {
