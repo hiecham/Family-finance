@@ -1,17 +1,12 @@
-// Flutter: Minimal personal finance app for Android (family & friends)
-// MVP features:
-// - Add Income, Expense (with categories), Savings (IRR/USD), Investment (Gold/Stocks/Crypto/Other)
-// - Shopping Goals (checklist with note)
-// - Local persistence with SharedPreferences (JSON)
-// - Dashboard totals
-//
-// Steps (already done in CI):
-// - pubspec.yaml must include: shared_preferences: ^2.2.3  (and intl if خواستی)
-// - flutter pub get
+// Flutter personal finance (Android) — Full main.dart
+// Features: income/expense/saving/investment, goals checklist, local storage,
+// number formatting, pie charts, delete with swipe.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +15,6 @@ void main() {
 
 class FinanceApp extends StatelessWidget {
   const FinanceApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -36,7 +30,11 @@ class FinanceApp extends StatelessWidget {
   }
 }
 
-// ===== Models =====
+/// ===== Helpers =====
+final _nf = NumberFormat.decimalPattern('en'); // 100,000
+String fmt(num v) => _nf.format(v.round());
+
+/// ===== Models =====
 enum EntryType { income, expense, saving, investment }
 enum SavingCurrency { irr, usd }
 enum InvestmentType { gold, stocks, crypto, other }
@@ -46,16 +44,16 @@ class FinanceEntry {
   final EntryType type;
   final DateTime date;
   final double amount;
-  final String? note;
+  final String? note; // also used as "income source" label if income
 
-  // Expense-only
+  // Expense
   final String? expenseCategory;
 
-  // Saving-only
-  final SavingCurrency? savingCurrency; // irr/usd
-  final double? savingDelta; // positive add, negative withdraw
+  // Saving
+  final SavingCurrency? savingCurrency;
+  final double? savingDelta;
 
-  // Investment-only
+  // Investment
   final InvestmentType? investmentType;
 
   FinanceEntry({
@@ -93,9 +91,8 @@ class FinanceEntry {
             ? null
             : SavingCurrency.values
                 .firstWhere((e) => e.name == j['savingCurrency']),
-        savingDelta: j['savingDelta'] == null
-            ? null
-            : (j['savingDelta'] as num).toDouble(),
+        savingDelta:
+            j['savingDelta'] == null ? null : (j['savingDelta'] as num).toDouble(),
         investmentType: j['investmentType'] == null
             ? null
             : InvestmentType.values
@@ -103,37 +100,9 @@ class FinanceEntry {
       );
 }
 
-// Goals model
-class Goal {
-  final String id;
-  final String title;
-  final String? note;
-  final bool done;
-
-  Goal({required this.id, required this.title, this.note, required this.done});
-
-  Goal copyWith({String? title, String? note, bool? done}) => Goal(
-        id: id,
-        title: title ?? this.title,
-        note: note ?? this.note,
-        done: done ?? this.done,
-      );
-
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'title': title, 'note': note, 'done': done};
-
-  factory Goal.fromJson(Map<String, dynamic> j) => Goal(
-        id: j['id'],
-        title: j['title'],
-        note: j['note'],
-        done: j['done'] == true,
-      );
-}
-
-// ===== Persistence =====
+/// ===== Persistence =====
 class Store {
   static const _k = 'finance_entries';
-  static const _kg = 'finance_goals';
 
   static Future<List<FinanceEntry>> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -149,24 +118,9 @@ class Store {
     final raw = jsonEncode(entries.map((e) => e.toJson()).toList());
     await sp.setString(_k, raw);
   }
-
-  // Goals
-  static Future<List<Goal>> loadGoals() async {
-    final sp = await SharedPreferences.getInstance();
-    final raw = sp.getString(_kg);
-    if (raw == null) return [];
-    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map(Goal.fromJson).toList();
-  }
-
-  static Future<void> saveGoals(List<Goal> goals) async {
-    final sp = await SharedPreferences.getInstance();
-    final raw = jsonEncode(goals.map((g) => g.toJson()).toList());
-    await sp.setString(_kg, raw);
-  }
 }
 
-// ===== Root (Bottom Nav) =====
+/// ===== Root (Bottom Nav) =====
 class RootPage extends StatefulWidget {
   const RootPage({super.key});
   @override
@@ -176,13 +130,11 @@ class RootPage extends StatefulWidget {
 class _RootPageState extends State<RootPage> {
   int _idx = 0;
   List<FinanceEntry> _entries = [];
-  List<Goal> _goals = [];
 
   @override
   void initState() {
     super.initState();
     _refresh();
-    _loadGoals();
   }
 
   Future<void> _refresh() async {
@@ -190,40 +142,17 @@ class _RootPageState extends State<RootPage> {
     setState(() => _entries = data);
   }
 
-  Future<void> _loadGoals() async {
-    final gs = await Store.loadGoals();
-    setState(() => _goals = gs);
-  }
-
   void _addEntry(FinanceEntry e) async {
-    final list = [..._entries, e]..sort((a, b) => b.date.compareTo(a.date));
+    final list = [..._entries, e];
+    list.sort((a, b) => b.date.compareTo(a.date));
     await Store.save(list);
     setState(() => _entries = list);
   }
 
-  void _deleteEntry(String id) async {
+  void _delete(String id) async {
     final list = _entries.where((e) => e.id != id).toList();
     await Store.save(list);
     setState(() => _entries = list);
-  }
-
-  Future<void> _addGoal(Goal g) async {
-    final list = [..._goals, g];
-    await Store.saveGoals(list);
-    setState(() => _goals = list);
-  }
-
-  void _toggleGoal(String id, bool? v) async {
-    final list =
-        _goals.map((g) => g.id == id ? g.copyWith(done: v ?? false) : g).toList();
-    await Store.saveGoals(list);
-    setState(() => _goals = list);
-  }
-
-  void _deleteGoal(String id) async {
-    final list = _goals.where((g) => g.id != id).toList();
-    await Store.saveGoals(list);
-    setState(() => _goals = list);
   }
 
   @override
@@ -231,22 +160,14 @@ class _RootPageState extends State<RootPage> {
     final pages = [
       DashboardPage(entries: _entries, onRefresh: _refresh),
       AddEntryPage(onAdd: _addEntry),
-      GoalsPage(
-        goals: _goals,
-        onAdd: (g) async => _addGoal(g),
-        onDelete: _deleteGoal,
-        onToggle: _toggleGoal,
-      ),
-      ExpensesPage(entries: _entries, onDelete: _deleteEntry),
+      IncomesPage(entries: _entries, onDelete: _delete),
+      ExpensesPage(entries: _entries, onDelete: _delete),
       SavingsPage(entries: _entries),
       InvestmentsPage(entries: _entries),
+      const GoalsPage(),
       SettingsPage(onClear: () async {
         await Store.save([]);
-        await Store.saveGoals([]);
-        setState(() {
-          _entries = [];
-          _goals = [];
-        });
+        setState(() => _entries = []);
       }),
     ];
 
@@ -258,10 +179,11 @@ class _RootPageState extends State<RootPage> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'داشبورد'),
           NavigationDestination(icon: Icon(Icons.add_circle_outline), label: 'افزودن'),
-          NavigationDestination(icon: Icon(Icons.checklist_rtl), label: 'اهداف'),
+          NavigationDestination(icon: Icon(Icons.call_received_outlined), label: 'درآمدها'),
           NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'هزینه‌ها'),
           NavigationDestination(icon: Icon(Icons.savings_outlined), label: 'پس‌انداز'),
           NavigationDestination(icon: Icon(Icons.trending_up_outlined), label: 'سرمایه‌گذاری'),
+          NavigationDestination(icon: Icon(Icons.flag_outlined), label: 'اهداف'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'تنظیمات'),
         ],
       ),
@@ -269,7 +191,7 @@ class _RootPageState extends State<RootPage> {
   }
 }
 
-// ===== Pages =====
+/// ===== Dashboard =====
 class DashboardPage extends StatelessWidget {
   final List<FinanceEntry> entries;
   final Future<void> Function() onRefresh;
@@ -284,11 +206,13 @@ class DashboardPage extends StatelessWidget {
       .fold(0.0, (p, e) => p + e.amount);
 
   double get savingIrr => entries
-      .where((e) => e.type == EntryType.saving && e.savingCurrency == SavingCurrency.irr)
+      .where((e) =>
+          e.type == EntryType.saving && e.savingCurrency == SavingCurrency.irr)
       .fold(0.0, (p, e) => p + (e.savingDelta ?? 0));
 
   double get savingUsd => entries
-      .where((e) => e.type == EntryType.saving && e.savingCurrency == SavingCurrency.usd)
+      .where((e) =>
+          e.type == EntryType.saving && e.savingCurrency == SavingCurrency.usd)
       .fold(0.0, (p, e) => p + (e.savingDelta ?? 0));
 
   double get investedTotal => entries
@@ -318,7 +242,8 @@ class DashboardPage extends StatelessWidget {
           const SizedBox(height: 8),
           _StatCard(title: 'جمع سرمایه‌گذاری', value: investedTotal),
           const SizedBox(height: 16),
-          const Text('آخرین تراکنش‌ها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('آخرین تراکنش‌ها',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           ...entries.take(10).map((e) => _EntryTile(e)).toList(),
         ],
@@ -338,10 +263,12 @@ class _StatCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: const TextStyle(fontSize: 14, color: Colors.black54)),
           const SizedBox(height: 6),
-          Text(value.toStringAsFixed(0), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(fmt(value),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         ]),
       ),
     );
@@ -364,16 +291,20 @@ class _StatRow extends StatelessWidget {
           .map((i) => Expanded(
                 child: Card(
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(i.title, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text(i.title,
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.black54)),
                         const SizedBox(height: 4),
-                        Text(i.value.toStringAsFixed(0),
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text(fmt(i.value),
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -397,7 +328,8 @@ class _EntryTile extends StatelessWidget {
     };
     final subtitle = [
       if (e.expenseCategory != null) e.expenseCategory!,
-      if (e.savingCurrency != null) (e.savingCurrency == SavingCurrency.irr ? 'تومان' : 'دلار'),
+      if (e.savingCurrency != null)
+        (e.savingCurrency == SavingCurrency.irr ? 'تومان' : 'دلار'),
       if (e.investmentType != null)
         {
           InvestmentType.gold: 'طلا',
@@ -405,18 +337,20 @@ class _EntryTile extends StatelessWidget {
           InvestmentType.crypto: 'کریپتو',
           InvestmentType.other: 'متفرقه',
         }[e.investmentType]!,
+      if (e.type == EntryType.income && (e.note != null && e.note!.isNotEmpty))
+        'منبع: ${e.note!}',
     ].join(' · ');
 
     return ListTile(
       leading: CircleAvatar(child: Icon(icon)),
-      title: Text(e.amount.toStringAsFixed(0)),
+      title: Text(fmt(e.amount)),
       subtitle: Text(subtitle.isEmpty ? (e.note ?? '') : subtitle),
       trailing: Text('${e.date.year}/${e.date.month}/${e.date.day}'),
     );
   }
 }
 
-// ===== Add Entry Page =====
+/// ===== Add Entry Page =====
 class AddEntryPage extends StatefulWidget {
   final void Function(FinanceEntry) onAdd;
   const AddEntryPage({super.key, required this.onAdd});
@@ -436,27 +370,25 @@ class _AddEntryPageState extends State<AddEntryPage> {
   final expenseCategories = const [
     'قبوض (آب/برق/گاز/اینترنت/موبایل)',
     'باشگاه - شهریه',
-    'باشگاه - تغذیه/مکمل (پروتئین/کراتین/...)',
+    'باشگاه - تغذیه/مکمل',
     'باشگاه - تجهیزات',
-    'بیرون رفتن (عمدتاً شام)',
-    'خرید وسایل خانه (یخچال/تلویزیون/...)',
-    'کمپ و تجهیزات (لامپ/جت فن/...)',
-    'هزینه ماشین (سوخت/سرویس/بیمه/...)',
-    'مصرفی خانه (برنج/گوشت/مرغ/...)',
-    'نظافت/بهداشت (شامپو/...)',
-    'تعمیرات خانه/وسایل',
+    'بیرون رفتن',
+    'وسایل خانه',
+    'کمپ و تجهیزات',
+    'هزینه ماشین',
+    'مصرفی خانه',
+    'نظافت/بهداشت',
+    'تعمیرات',
     'متفرقه',
   ];
 
   void _submit() {
     final amount = double.tryParse(_amountCtrl.text.trim());
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('مبلغ معتبر وارد کنید')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('مبلغ معتبر وارد کنید')));
       return;
     }
-
     FinanceEntry e;
     switch (_type) {
       case EntryType.income:
@@ -485,7 +417,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
           date: _date,
           amount: amount,
           savingCurrency: _savingCurrency,
-          savingDelta: amount, // برای برداشت مقدار منفی وارد کن
+          savingDelta: amount,
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         );
         break;
@@ -500,11 +432,11 @@ class _AddEntryPageState extends State<AddEntryPage> {
         );
         break;
     }
-
     widget.onAdd(e);
     _amountCtrl.clear();
     _noteCtrl.clear();
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ذخیره شد')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('ذخیره شد')));
   }
 
   @override
@@ -561,7 +493,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text('نکته: برای برداشت می‌توانید مبلغ منفی وارد کنید (مثلاً -500000).'),
+            const Text('نکته: برای برداشت از پس‌انداز می‌توانید مبلغ منفی وارد کنید.'),
           ],
           if (_type == EntryType.investment) ...[
             const SizedBox(height: 12),
@@ -571,7 +503,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
                 DropdownMenuItem(value: InvestmentType.gold, child: Text('طلا')),
                 DropdownMenuItem(value: InvestmentType.stocks, child: Text('بورس/صندوق')),
                 DropdownMenuItem(value: InvestmentType.crypto, child: Text('کریپتو')),
-                DropdownMenuItem(value: InvestmentType.other, child: Text('متفرقه (ملک/زمین/...)')),
+                DropdownMenuItem(value: InvestmentType.other, child: Text('متفرقه')),
               ],
               onChanged: (v) => setState(() => _investmentType = v!),
               decoration: const InputDecoration(
@@ -584,7 +516,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
           TextField(
             controller: _noteCtrl,
             decoration: const InputDecoration(
-              labelText: 'توضیحات (اختیاری)',
+              labelText: 'توضیحات / منبع درآمد (اختیاری)',
               border: OutlineInputBorder(),
             ),
           ),
@@ -615,13 +547,67 @@ class _AddEntryPageState extends State<AddEntryPage> {
                 ),
               ),
             ],
-          )
+          ),
+          const SizedBox(height: 72),
+        ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: const SizedBox.shrink(), // FAB جدا نداریم
+    );
+  }
+}
+
+/// ===== Incomes Page =====
+class IncomesPage extends StatelessWidget {
+  final List<FinanceEntry> entries;
+  final void Function(String id)? onDelete;
+  const IncomesPage({super.key, required this.entries, this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final incomes = entries.where((e) => e.type == EntryType.income).toList();
+    final byNote = <String, double>{};
+    for (final e in incomes) {
+      final k = (e.note == null || e.note!.trim().isEmpty)
+          ? 'متفرقه'
+          : e.note!.trim();
+      byNote[k] = (byNote[k] ?? 0) + e.amount;
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('درآمدها')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _PieCard(title: 'سهم هر منبع درآمد', data: byNote),
+          const SizedBox(height: 8),
+          ...incomes.map((e) => (onDelete == null)
+              ? ListTile(
+                  leading: const Icon(Icons.north_east),
+                  title: Text(fmt(e.amount)),
+                  subtitle: Text(e.note ?? 'متفرقه'),
+                  trailing:
+                      Text('${e.date.year}/${e.date.month}/${e.date.day}'),
+                )
+              : Dismissible(
+                  key: ValueKey(e.id),
+                  background: Container(color: Colors.redAccent),
+                  onDismissed: (_) => onDelete!(e.id),
+                  child: ListTile(
+                    leading: const Icon(Icons.north_east),
+                    title: Text(fmt(e.amount)),
+                    subtitle: Text(e.note ?? 'متفرقه'),
+                    trailing: Text(
+                        '${e.date.year}/${e.date.month}/${e.date.day}'),
+                  ),
+                )),
         ],
       ),
     );
   }
 }
 
+/// ===== Expenses Page =====
 class ExpensesPage extends StatelessWidget {
   final List<FinanceEntry> entries;
   final void Function(String id) onDelete;
@@ -637,30 +623,11 @@ class ExpensesPage extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('لیست هزینه‌ها')),
+      appBar: AppBar(title: const Text('هزینه‌ها')),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('جمع به تفکیک دسته', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  ...byCat.entries
-                      .map((e) => Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [Text(e.key), Text(e.value.toStringAsFixed(0))],
-                          ))
-                      .toList(),
-                ],
-              ),
-            ),
-          ),
+          _PieCard(title: 'سهم هر دسته از هزینه‌ها', data: byCat),
           const SizedBox(height: 8),
           ...expenses.map((e) => Dismissible(
                 key: ValueKey(e.id),
@@ -668,45 +635,64 @@ class ExpensesPage extends StatelessWidget {
                 onDismissed: (_) => onDelete(e.id),
                 child: ListTile(
                   leading: const Icon(Icons.south_west),
-                  title: Text(e.amount.toStringAsFixed(0)),
+                  title: Text(fmt(e.amount)),
                   subtitle: Text(e.expenseCategory ?? 'متفرقه'),
-                  trailing: Text('${e.date.year}/${e.date.month}/${e.date.day}'),
+                  trailing:
+                      Text('${e.date.year}/${e.date.month}/${e.date.day}'),
                 ),
               )),
+          const SizedBox(height: 72),
         ],
       ),
     );
   }
 }
 
+/// ===== Savings Page =====
 class SavingsPage extends StatelessWidget {
   final List<FinanceEntry> entries;
   const SavingsPage({super.key, required this.entries});
 
   @override
   Widget build(BuildContext context) {
-    final irr = entries.where((e) => e.type == EntryType.saving && e.savingCurrency == SavingCurrency.irr);
-    final usd = entries.where((e) => e.type == EntryType.saving && e.savingCurrency == SavingCurrency.usd);
+    final irr = entries.where((e) =>
+        e.type == EntryType.saving && e.savingCurrency == SavingCurrency.irr);
+    final usd = entries.where((e) =>
+        e.type == EntryType.saving && e.savingCurrency == SavingCurrency.usd);
     final irrSum = irr.fold(0.0, (p, e) => p + (e.savingDelta ?? 0));
     final usdSum = usd.fold(0.0, (p, e) => p + (e.savingDelta ?? 0));
+
+    final data = {'تومان': irrSum, 'دلار': usdSum};
 
     return Scaffold(
       appBar: AppBar(title: const Text('پس‌انداز')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _PieCard(title: 'سهم هر واحد از پس‌انداز', data: data),
+          const SizedBox(height: 8),
           _StatCard(title: 'پس‌انداز تومان', value: irrSum),
           const SizedBox(height: 8),
           _StatCard(title: 'پس‌انداز دلار', value: usdSum),
+          const SizedBox(height: 72),
         ],
       ),
     );
   }
 }
 
+/// ===== Investments Page =====
 class InvestmentsPage extends StatelessWidget {
   final List<FinanceEntry> entries;
   const InvestmentsPage({super.key, required this.entries});
+
+  String vt(InvestmentType t) => {
+        InvestmentType.gold: 'طلا',
+        InvestmentType.stocks: 'بورس/صندوق',
+        InvestmentType.crypto: 'کریپتو',
+        InvestmentType.other: 'متفرقه',
+      }[t]!;
+
   @override
   Widget build(BuildContext context) {
     final inv = entries.where((e) => e.type == EntryType.investment).toList();
@@ -715,150 +701,167 @@ class InvestmentsPage extends StatelessWidget {
       final k = e.investmentType ?? InvestmentType.other;
       byType[k] = (byType[k] ?? 0) + e.amount;
     }
-
-    String vt(InvestmentType t) => {
-          InvestmentType.gold: 'طلا',
-          InvestmentType.stocks: 'بورس/صندوق',
-          InvestmentType.crypto: 'کریپتو',
-          InvestmentType.other: 'متفرقه (ملک/زمین/...)',
-        }[t]!;
+    final data = byType.map((k, v) => MapEntry(vt(k), v));
 
     return Scaffold(
       appBar: AppBar(title: const Text('سرمایه‌گذاری')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('جمع به تفکیک نوع', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  ...byType.entries
-                      .map((e) => Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [Text(vt(e.key)), Text(e.value.toStringAsFixed(0))],
-                          ))
-                      .toList(),
-                ],
-              ),
-            ),
-          ),
+          _PieCard(title: 'سهم هر نوع از سرمایه‌گذاری', data: data),
           const SizedBox(height: 8),
           ...inv.map((e) => ListTile(
                 leading: const Icon(Icons.trending_up),
-                title: Text(e.amount.toStringAsFixed(0)),
+                title: Text(fmt(e.amount)),
                 subtitle: Text(vt(e.investmentType ?? InvestmentType.other)),
-                trailing: Text('${e.date.year}/${e.date.month}/${e.date.day}'),
+                trailing:
+                    Text('${e.date.year}/${e.date.month}/${e.date.day}'),
               )),
+          const SizedBox(height: 72),
         ],
       ),
     );
   }
 }
 
-// ===== Goals (Shopping targets) =====
+/// ===== Goals (Checklist) =====
+class Goal {
+  final String id;
+  final String title;
+  final bool done;
+  Goal({required this.id, required this.title, required this.done});
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'done': done};
+  factory Goal.fromJson(Map<String, dynamic> j) =>
+      Goal(id: j['id'], title: j['title'], done: j['done'] ?? false);
+}
+
+class GoalsStore {
+  static const _k = 'finance_goals';
+  static Future<List<Goal>> load() async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString(_k);
+    if (raw == null) return [];
+    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    return list.map(Goal.fromJson).toList();
+  }
+
+  static Future<void> save(List<Goal> g) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_k, jsonEncode(g.map((e) => e.toJson()).toList()));
+  }
+}
+
 class GoalsPage extends StatefulWidget {
-  final List<Goal> goals;
-  final Future<void> Function(Goal g) onAdd;
-  final void Function(String id) onDelete;
-  final void Function(String id, bool? done) onToggle;
-
-  const GoalsPage({
-    super.key,
-    required this.goals,
-    required this.onAdd,
-    required this.onDelete,
-    required this.onToggle,
-  });
-
+  const GoalsPage({super.key});
   @override
   State<GoalsPage> createState() => _GoalsPageState();
 }
 
 class _GoalsPageState extends State<GoalsPage> {
-  void _openAddDialog() async {
-    final titleCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('هدف خرید جدید'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'عنوان')),
-            const SizedBox(height: 8),
-            TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'توضیح (اختیاری)')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('ثبت')),
-        ],
-      ),
-    );
-    if (ok == true && titleCtrl.text.trim().isNotEmpty) {
-      final g = Goal(
-        id: UniqueKey().toString(),
-        title: titleCtrl.text.trim(),
-        note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-        done: false,
-      );
-      await widget.onAdd(g);
-    }
+  List<Goal> goals = [];
+  final _ctrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    goals = await GoalsStore.load();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _addGoal() async {
+    final t = _ctrl.text.trim();
+    if (t.isEmpty) return;
+    final g = Goal(id: UniqueKey().toString(), title: t, done: false);
+    goals = [...goals, g];
+    await GoalsStore.save(goals);
+    _ctrl.clear();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggle(String id, bool? v) async {
+    goals = goals
+        .map((g) =>
+            g.id == id ? Goal(id: g.id, title: g.title, done: v ?? false) : g)
+        .toList();
+    await GoalsStore.save(goals);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _delete(String id) async {
+    goals = goals.where((g) => g.id != id).toList();
+    await GoalsStore.save(goals);
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final goals = widget.goals;
     return Scaffold(
       appBar: AppBar(title: const Text('اهداف خرید')),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
         children: [
           if (goals.isEmpty)
             const Padding(
-              padding: EdgeInsets.only(top: 24),
-              child: Center(child: Text('فعلاً چیزی روی لیست نیست. روی + بزنید.')),
-            )
-          else
-            ...goals.map((g) => Dismissible(
-                  key: ValueKey(g.id),
-                  background: Container(color: Colors.redAccent),
-                  onDismissed: (_) => widget.onDelete(g.id),
-                  child: CheckboxListTile(
-                    value: g.done,
-                    onChanged: (v) => widget.onToggle(g.id, v),
-                    title: Text(
-                      g.title,
-                      style: TextStyle(
-                        decoration: g.done ? TextDecoration.lineThrough : null,
-                      ),
+              padding: EdgeInsets.all(24),
+              child:
+                  Center(child: Text('هنوز هدفی ثبت نشده. دکمه + پایین را بزنید')),
+            ),
+          ...goals.map((g) => Dismissible(
+                key: ValueKey(g.id),
+                background: Container(color: Colors.redAccent),
+                onDismissed: (_) => _delete(g.id),
+                child: CheckboxListTile(
+                  value: g.done,
+                  onChanged: (v) => _toggle(g.id, v),
+                  title: Text(
+                    g.title,
+                    style: TextStyle(
+                      decoration:
+                          g.done ? TextDecoration.lineThrough : null,
                     ),
-                    subtitle: (g.note == null || g.note!.isEmpty) ? null : Text(g.note!),
                   ),
-                )),
+                ),
+              )),
         ],
       ),
-      // دکمه + کمی بالاتر از پایین
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 72),
-        child: FloatingActionButton.large(
-          onPressed: _openAddDialog,
-          child: const Icon(Icons.add),
-        ),
-      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: FloatingActionButton.large(
+        onPressed: () async {
+          await showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('افزودن هدف'),
+              content: TextField(
+                controller: _ctrl,
+                decoration:
+                    const InputDecoration(hintText: 'مثلاً: تلویزیون 55 اینچ'),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('انصراف')),
+                FilledButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _addGoal();
+                    },
+                    child: const Text('افزودن')),
+              ],
+            ),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
 
-// ===== Settings =====
+/// ===== Settings =====
 class SettingsPage extends StatelessWidget {
   final Future<void> Function()? onClear;
   const SettingsPage({super.key, this.onClear});
@@ -870,10 +873,10 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('دسته‌بندی‌ها فعلاً ثابت هستند'),
-            subtitle: const Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'),
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'),
+            subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'),
           ),
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
@@ -885,4 +888,102 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ===== Pie Card Widget =====
+class _PieCard extends StatelessWidget {
+  final String title;
+  final Map<String, double> data; // label -> value
+  const _PieCard({required this.title, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = data.values.fold<double>(0, (p, v) => p + v);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: total <= 0
+            ? const Text('داده‌ای برای نمایش نیست')
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 180,
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 32,
+                        sections: _buildSections(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: data.entries.map((e) {
+                      final i = data.keys.toList().indexOf(e.key);
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: _colorFor(i),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('${e.key}: ${fmt(e.value)}'),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  List<PieChartSectionData> _buildSections() {
+    final entries = data.entries.toList();
+    final total = data.values.fold<double>(0, (p, v) => p + v);
+    return List.generate(entries.length, (i) {
+      final v = entries[i].value;
+      return PieChartSectionData(
+        value: v,
+        title: total == 0 ? '' : '${(v / total * 100).toStringAsFixed(0)}%',
+        radius: 60,
+        titleStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+        color: _colorFor(i),
+      );
+    });
+  }
+
+  Color _colorFor(int i) {
+    const palette = [
+      Colors.teal,
+      Colors.blue,
+      Colors.orange,
+      Colors.pink,
+      Colors.indigo,
+      Colors.green,
+      Colors.cyan,
+      Colors.amber,
+      Colors.purple,
+      Colors.brown,
+    ];
+    return palette[i % palette.length];
+    }
 }
