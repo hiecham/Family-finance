@@ -1,6 +1,6 @@
 // Flutter personal finance (Android) — Full main.dart (fixed braces) // Features: income/expense/saving/investment, goals checklist, local storage, // number formatting with Intl, pie charts with fl_chart, delete (swipe), edit investments.
 
-import 'dart:convert'; import 'package:flutter/material.dart'; import 'package:shared_preferences/shared_preferences.dart'; import 'package:intl/intl.dart'; import 'package:fl_chart/fl_chart.dart';
+import 'dart:convert'; import 'package:flutter/material.dart'; import 'package:shared_preferences/shared_preferences.dart'; import 'package:intl/intl.dart'; import 'package:fl_chart/fl_chart.dart'; import 'package:fl_chart/fl_chart.dart';
 
 void main() { WidgetsFlutterBinding.ensureInitialized(); runApp(const FinanceApp()); }
 
@@ -374,11 +374,109 @@ class _GoalsPageState extends State<GoalsPage> { List<Goal> _goals = []; final T
 
 @override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('تنظیمات')), body: ListView( padding: const EdgeInsets.all(16), children: [ const ListTile( leading: Icon(Icons.info_outline), title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'), subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'), ), const SizedBox(height: 12), FilledButton.tonalIcon( onPressed: onClear, icon: const Icon(Icons.delete_forever), label: const Text('حذف همه داده‌ها'), ), ], ), ); } }
 
-/// ===== Pie Card Widget ===== class _PieCard extends StatelessWidget { final String title; final Map<String, double> data; // label -> value const _PieCard({required this.title, required this.data});
+// ------- Pie chart card (fixed) -------
+class PieCard extends StatelessWidget {
+  final String title;
+  /// Map of label -> value
+  final Map<String, double> values;
 
-@override Widget build(BuildContext context) { final total = data.values.fold<double>(0, (p, v) => p + v); return Card( elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), child: Padding( padding: const EdgeInsets.all(16), child: total <= 0 ? const Text('داده‌ای برای نمایش نیست') : Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Text(title, style: const TextStyle( fontSize: 14, fontWeight: FontWeight.bold)), const SizedBox(height: 12), SizedBox( height: 180, child: PieChart( PieChartData( sectionsSpace: 2, centerSpaceRadius: 32, sections: _buildSections(), ), ), ), const SizedBox(height: 8), Wrap( spacing: 8, runSpacing: 4, children: data.entries.map((e) { final i = data.keys.toList().indexOf(e.key); return Row( mainAxisSize: MainAxisSize.min, children: [ Container( width: 10, height: 10, decoration: BoxDecoration( color: _colorFor(i), shape: BoxShape.circle, ), ), const SizedBox(width: 6), Text('${e.key}: ${fmt(e.value)}'), ], ); }).toList(), ), ], ), ), ); }
+  const PieCard({
+    super.key,
+    required this.title,
+    required this.values,
+  });
 
-List<PieChartSectionData> _buildSections() { final entries = data.entries.toList(); final total = data.values.fold<double>(0, (p, v) => p + v); return List.generate(entries.length, (i) { final v = entries[i].value; return PieChartSectionData( value: v, title: total == 0 ? '' : '${(v / total * 100).toStringAsFixed(0)}%', radius: 60, titleStyle: const TextStyle( fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white, ), color: _colorFor(i), ); }); }
+  Color _colorFor(int i) {
+    const palette = [
+      Color(0xFF26A69A),
+      Color(0xFF42A5F5),
+      Color(0xFFAB47BC),
+      Color(0xFFFF7043),
+      Color(0xFF7CB342),
+      Color(0xFFFFCA28),
+      Color(0xFF5C6BC0),
+      Color(0xFFEF5350),
+    ];
+    return palette[i % palette.length];
+  }
 
-Color _colorFor(int i) { const palette = [ Colors.teal, Colors.blue, Colors.orange, Colors.pink, Colors.indigo, Colors.green, Colors.cyan, Colors.amber, Colors.purple, Colors.brown, ]; return palette[i % palette.length]; } }
+  List<PieChartSectionData> _buildSections() {
+    final entries = values.entries.toList();
+    final total = values.values.fold<double>(0, (p, v) => p + v);
+    return List.generate(entries.length, (i) {
+      final v = entries[i].value;
+      return PieChartSectionData(
+        value: v,
+        title: total == 0 ? '' : '${(v / total * 100).toStringAsFixed(0)}%',
+        radius: 60,
+        titleStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+        color: _colorFor(i),
+      );
+    });
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final total = values.values.fold<double>(0, (p, v) => p + v);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: total <= 0
+            ? const Text('داده‌ای برای نمایش نیست')
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 180,
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 32,
+                        sections: _buildSections(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: values.entries.map((e) {
+                      final i = values.keys.toList().indexOf(e.key);
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: _colorFor(i),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('${e.key}: ${fmt(e.value)}'),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
