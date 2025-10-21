@@ -353,7 +353,31 @@ Future<void> _delete(String id) async { goals = goals.where((e) => e.id != id).t
 
 @override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('اهداف خرید')), body: ListView( padding: const EdgeInsets.all(12), children: [ if (goals.isEmpty) const Padding( padding: EdgeInsets.only(top: 24), child: Center(child: Text('هنوز هدفی ثبت نشده. روی + بزنید')), ) else ...goals.map((g) => Dismissible( key: ValueKey(g.id), background: Container(color: Colors.redAccent), onDismissed: (_) => _delete(g.id), child: CheckboxListTile( value: g.done, onChanged: (v) => _toggleDone(g, v ?? false), title: Text( g.title, style: TextStyle( decoration: g.done ? TextDecoration.lineThrough : TextDecoration.none, ), ), subtitle: g.note == null ? null : Text(g.note!), ), )), const SizedBox(height: 88), ], ), floatingActionButton: Padding( padding: const EdgeInsets.only(bottom: 72), child: FloatingActionButton( onPressed: _addGoal, child: const Icon(Icons.add), ), ), floatingActionButtonLocation: FloatingActionButtonLocation.endFloat, ); } }
 
-// ===== Settings ===== class SettingsPage extends StatelessWidget { final Future<void> Function()? onClear; // clears all data (use carefully) const SettingsPage({super.key, this.onClear});
+                             // ===== Settings =====
+class SettingsPage extends StatelessWidget {
+  final Future<void> Function()? onClear; // clears all data (use carefully)
+  const SettingsPage({super.key, this.onClear});
 
-@override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('تنظیمات')), body: ListView( padding: const EdgeInsets.all(16), children: [ ListTile( leading: const Icon(Icons.info_outline), title: const Text('دسته‌بندی‌ها فعلاً ثابت هستند'), subtitle: const Text('در نسخه بعدی امکان افزودن دسته جدید اضافه می‌شود.'), ), const SizedBox(height: 12), FilledButton.tonalIcon( onPressed: onClear, icon: const Icon(Icons.delete_forever), label: const Text('حذف همه داده‌ها'), ), ], ), ); } }
-
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تنظیمات')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('دسته‌بندی‌ها فعلاً ثابت هستند'),
+            subtitle: const Text('در نسخه بعدی امکان افزودن دسته جدید اضافه می‌شود.'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('حذف همه داده‌ها'),
+          ),
+        ],
+      ),
+    );
+  }
+}                                  
