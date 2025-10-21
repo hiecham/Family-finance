@@ -1,6 +1,6 @@
 // Flutter personal finance (Android) — Full main.dart
 // Features: income/expense/saving/investment, goals checklist, local storage,
-// number formatting, pie charts, delete with swipe.
+// number formatting with Intl, pie charts with fl_chart, delete (swipe), edit investments.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -31,7 +31,7 @@ class FinanceApp extends StatelessWidget {
 }
 
 /// ===== Helpers =====
-final _nf = NumberFormat.decimalPattern('en'); // 100,000
+final _nf = NumberFormat.decimalPattern('en'); // e.g., 100,000
 String fmt(num v) => _nf.format(v.round());
 
 /// ===== Models =====
@@ -44,7 +44,7 @@ class FinanceEntry {
   final EntryType type;
   final DateTime date;
   final double amount;
-  final String? note; // also used as "income source" label if income
+  final String? note; // if income => source
 
   // Expense
   final String? expenseCategory;
@@ -143,14 +143,20 @@ class _RootPageState extends State<RootPage> {
   }
 
   void _addEntry(FinanceEntry e) async {
-    final list = [..._entries, e];
-    list.sort((a, b) => b.date.compareTo(a.date));
+    final list = [..._entries, e]..sort((a, b) => b.date.compareTo(a.date));
     await Store.save(list);
     setState(() => _entries = list);
   }
 
-  void _delete(String id) async {
+  void _deleteEntry(String id) async {
     final list = _entries.where((e) => e.id != id).toList();
+    await Store.save(list);
+    setState(() => _entries = list);
+  }
+
+  void _updateEntry(FinanceEntry u) async {
+    final list = _entries.map((e) => e.id == u.id ? u : e).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
     await Store.save(list);
     setState(() => _entries = list);
   }
@@ -160,10 +166,10 @@ class _RootPageState extends State<RootPage> {
     final pages = [
       DashboardPage(entries: _entries, onRefresh: _refresh),
       AddEntryPage(onAdd: _addEntry),
-      IncomesPage(entries: _entries, onDelete: _delete),
-      ExpensesPage(entries: _entries, onDelete: _delete),
+      IncomesPage(entries: _entries, onDelete: _deleteEntry),
+      ExpensesPage(entries: _entries, onDelete: _deleteEntry),
       SavingsPage(entries: _entries),
-      InvestmentsPage(entries: _entries),
+      InvestmentsPage(entries: _entries, onDelete: _deleteEntry, onEdit: _updateEntry),
       const GoalsPage(),
       SettingsPage(onClear: () async {
         await Store.save([]);
@@ -552,7 +558,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: const SizedBox.shrink(), // FAB جدا نداریم
+      floatingActionButton: const SizedBox.shrink(),
     );
   }
 }
@@ -669,321 +675,4 @@ class SavingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _PieCard(title: 'سهم هر واحد از پس‌انداز', data: data),
-          const SizedBox(height: 8),
-          _StatCard(title: 'پس‌انداز تومان', value: irrSum),
-          const SizedBox(height: 8),
-          _StatCard(title: 'پس‌انداز دلار', value: usdSum),
-          const SizedBox(height: 72),
-        ],
-      ),
-    );
-  }
-}
-
-/// ===== Investments Page =====
-class InvestmentsPage extends StatelessWidget {
-  final List<FinanceEntry> entries;
-  const InvestmentsPage({super.key, required this.entries});
-
-  String vt(InvestmentType t) => {
-        InvestmentType.gold: 'طلا',
-        InvestmentType.stocks: 'بورس/صندوق',
-        InvestmentType.crypto: 'کریپتو',
-        InvestmentType.other: 'متفرقه',
-      }[t]!;
-
-  @override
-  Widget build(BuildContext context) {
-    final inv = entries.where((e) => e.type == EntryType.investment).toList();
-    final byType = <InvestmentType, double>{};
-    for (final e in inv) {
-      final k = e.investmentType ?? InvestmentType.other;
-      byType[k] = (byType[k] ?? 0) + e.amount;
-    }
-    final data = byType.map((k, v) => MapEntry(vt(k), v));
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('سرمایه‌گذاری')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _PieCard(title: 'سهم هر نوع از سرمایه‌گذاری', data: data),
-          const SizedBox(height: 8),
-          ...inv.map((e) => ListTile(
-                leading: const Icon(Icons.trending_up),
-                title: Text(fmt(e.amount)),
-                subtitle: Text(vt(e.investmentType ?? InvestmentType.other)),
-                trailing:
-                    Text('${e.date.year}/${e.date.month}/${e.date.day}'),
-              )),
-          const SizedBox(height: 72),
-        ],
-      ),
-    );
-  }
-}
-
-/// ===== Goals (Checklist) =====
-class Goal {
-  final String id;
-  final String title;
-  final bool done;
-  Goal({required this.id, required this.title, required this.done});
-
-  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'done': done};
-  factory Goal.fromJson(Map<String, dynamic> j) =>
-      Goal(id: j['id'], title: j['title'], done: j['done'] ?? false);
-}
-
-class GoalsStore {
-  static const _k = 'finance_goals';
-  static Future<List<Goal>> load() async {
-    final sp = await SharedPreferences.getInstance();
-    final raw = sp.getString(_k);
-    if (raw == null) return [];
-    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map(Goal.fromJson).toList();
-  }
-
-  static Future<void> save(List<Goal> g) async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString(_k, jsonEncode(g.map((e) => e.toJson()).toList()));
-  }
-}
-
-class GoalsPage extends StatefulWidget {
-  const GoalsPage({super.key});
-  @override
-  State<GoalsPage> createState() => _GoalsPageState();
-}
-
-class _GoalsPageState extends State<GoalsPage> {
-  List<Goal> goals = [];
-  final _ctrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    goals = await GoalsStore.load();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _addGoal() async {
-    final t = _ctrl.text.trim();
-    if (t.isEmpty) return;
-    final g = Goal(id: UniqueKey().toString(), title: t, done: false);
-    goals = [...goals, g];
-    await GoalsStore.save(goals);
-    _ctrl.clear();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _toggle(String id, bool? v) async {
-    goals = goals
-        .map((g) =>
-            g.id == id ? Goal(id: g.id, title: g.title, done: v ?? false) : g)
-        .toList();
-    await GoalsStore.save(goals);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _delete(String id) async {
-    goals = goals.where((g) => g.id != id).toList();
-    await GoalsStore.save(goals);
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('اهداف خرید')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-        children: [
-          if (goals.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child:
-                  Center(child: Text('هنوز هدفی ثبت نشده. دکمه + پایین را بزنید')),
-            ),
-          ...goals.map((g) => Dismissible(
-                key: ValueKey(g.id),
-                background: Container(color: Colors.redAccent),
-                onDismissed: (_) => _delete(g.id),
-                child: CheckboxListTile(
-                  value: g.done,
-                  onChanged: (v) => _toggle(g.id, v),
-                  title: Text(
-                    g.title,
-                    style: TextStyle(
-                      decoration:
-                          g.done ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                ),
-              )),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: FloatingActionButton.large(
-        onPressed: () async {
-          await showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('افزودن هدف'),
-              content: TextField(
-                controller: _ctrl,
-                decoration:
-                    const InputDecoration(hintText: 'مثلاً: تلویزیون 55 اینچ'),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('انصراف')),
-                FilledButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _addGoal();
-                    },
-                    child: const Text('افزودن')),
-              ],
-            ),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
-}
-
-/// ===== Settings =====
-class SettingsPage extends StatelessWidget {
-  final Future<void> Function()? onClear;
-  const SettingsPage({super.key, this.onClear});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('تنظیمات')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'),
-            subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.tonalIcon(
-            onPressed: onClear,
-            icon: const Icon(Icons.delete_forever),
-            label: const Text('حذف همه داده‌ها'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// ===== Pie Card Widget =====
-class _PieCard extends StatelessWidget {
-  final String title;
-  final Map<String, double> data; // label -> value
-  const _PieCard({required this.title, required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final total = data.values.fold<double>(0, (p, v) => p + v);
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: total <= 0
-            ? const Text('داده‌ای برای نمایش نیست')
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 180,
-                    child: PieChart(
-                      PieChartData(
-                        sectionsSpace: 2,
-                        centerSpaceRadius: 32,
-                        sections: _buildSections(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: data.entries.map((e) {
-                      final i = data.keys.toList().indexOf(e.key);
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _colorFor(i),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text('${e.key}: ${fmt(e.value)}'),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
-  List<PieChartSectionData> _buildSections() {
-    final entries = data.entries.toList();
-    final total = data.values.fold<double>(0, (p, v) => p + v);
-    return List.generate(entries.length, (i) {
-      final v = entries[i].value;
-      return PieChartSectionData(
-        value: v,
-        title: total == 0 ? '' : '${(v / total * 100).toStringAsFixed(0)}%',
-        radius: 60,
-        titleStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-        color: _colorFor(i),
-      );
-    });
-  }
-
-  Color _colorFor(int i) {
-    const palette = [
-      Colors.teal,
-      Colors.blue,
-      Colors.orange,
-      Colors.pink,
-      Colors.indigo,
-      Colors.green,
-      Colors.cyan,
-      Colors.amber,
-      Colors.purple,
-      Colors.brown,
-    ];
-    return palette[i % palette.length];
-    }
-}
+          _Pie
