@@ -857,30 +857,38 @@ class SavingsPage extends StatelessWidget {
 /// ===== صفحه سرمایه‌گذاری =====
 class InvestmentsPage extends StatelessWidget {
   final List<FinanceEntry> entries;
-  final void Function(String id)?
-    onDelete; // این خط را اضافه کن
+  const InvestmentsPage({super.key, required this.entries});
+
   @override
   Widget build(BuildContext context) {
-    final inv = entries.where((e) => e.type == EntryType.investment).toList();
-    final byType = <String, double>{};
+    final inv = entries
+        .where((e) => e.type == EntryType.investment)
+        .toList();
+
+    // جمع به تفکیک نوع
+    final byType = <InvestmentType, double>{};
+    for (final e in inv) {
+      final k = e.investmentType ?? InvestmentType.other;
+      byType[k] = (byType[k] ?? 0) + e.amount;
+    }
+
+    // تبدیل به Map<String,double> برای PieCard
     String vt(InvestmentType t) => {
           InvestmentType.gold: 'طلا',
-          InvestmentType.stocks: 'بورس/صندوق',2
+          InvestmentType.stocks: 'بورس/صندوق',
           InvestmentType.crypto: 'کریپتو',
           InvestmentType.other: 'متفرقه',
         }[t]!;
 
-    for (final e in inv) {
-      final k = vt(e.investmentType ?? InvestmentType.other);
-      byType[k] = (byType[k] ?? 0) + e.amount;
-    }
+    final byTypeView = <String, double>{};
+    byType.forEach((k, v) => byTypeView[vt(k)] = v);
 
     return Scaffold(
       appBar: AppBar(title: const Text('سرمایه‌گذاری')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          PieCard(title: 'نمودار سرمایه‌گذاری', values: byType),
+          PieCard(title: 'نمودار سرمایه‌گذاری', values: byTypeView),
           const SizedBox(height: 8),
           ...inv.map((e) => ListTile(
                 leading: const Icon(Icons.trending_up),
@@ -892,8 +900,9 @@ class InvestmentsPage extends StatelessWidget {
       ),
     );
   }
-} 
-/// ===== Goals (چک‌لیست اهداف خرید) =====
+}
+
+  ===== Goals (چک‌لیست اهداف خرید) =====
 class Goal {
   final String id;
   final String title;
