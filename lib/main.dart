@@ -168,11 +168,6 @@ class _RootPageState extends State<RootPage> {
   }
 }
 
-String fmt(double v) {
-  final s = v.toStringAsFixed(0);
-  final r = RegExp(r'\B(?=(\d{3})+(?!\d))');
-  return s.replaceAllMapped(r, (m) => ',');
-}
 /// ===== Add Hub (entry) =====
 class AddEntryHub extends StatelessWidget {
   final void Function(FinanceEntry) onAdd;
@@ -862,14 +857,15 @@ class SavingsPage extends StatelessWidget {
 /// ===== صفحه سرمایه‌گذاری =====
 class InvestmentsPage extends StatelessWidget {
   final List<FinanceEntry> entries;
-  const InvestmentsPage({super.key, required this.entries});
+  final void Function(String id)?
+    onDelete; // این خط را اضافه کن
   @override
   Widget build(BuildContext context) {
     final inv = entries.where((e) => e.type == EntryType.investment).toList();
     final byType = <String, double>{};
     String vt(InvestmentType t) => {
           InvestmentType.gold: 'طلا',
-          InvestmentType.stocks: 'بورس/صندوق',
+          InvestmentType.stocks: 'بورس/صندوق',2
           InvestmentType.crypto: 'کریپتو',
           InvestmentType.other: 'متفرقه',
         }[t]!;
