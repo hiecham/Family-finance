@@ -372,7 +372,13 @@ class _GoalsPageState extends State<GoalsPage> { List<Goal> _goals = []; final T
 
 /// ===== Settings ===== class SettingsPage extends StatelessWidget { final Future<void> Function()? onClear; const SettingsPage({super.key, this.onClear});
 
-@override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('تنظیمات')), body: ListView( padding: const EdgeInsets.all(16), children: [ const ListTile( leading: Icon(Icons.info_outline), title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'), subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'), ), const SizedBox(height: 12), FilledButton.tonalIcon( onPressed: onClear, icon: const Icon(Icons.delete_forever), label: const Text('حذف همه داده‌ها'), ), ], ), ); } }
+@override Widget build(BuildContext context) { return Scaffold( appBar: AppBar(title: const Text('تنظیمات')), body: ListView( padding: const EdgeInsets.all(16), children: [ const ListTile( leading: Icon(Icons.info_outline), title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'), subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'), ), const SizedBox(height: 12), FilledButton.tonalIcon( onPressed: onClear ?? () {},icon: const Icon(Icons.delete_forever), label: const Text('حذف همه داده‌ها'), ), ], ), ); } }
+
+String fmt(double v) {
+  final s = v.toStringAsFixed(0);
+  final r = RegExp(r'\B(?=(\d{3})+(?!\d))');
+  return s.replaceAllMapped(r, (m) => ',');
+}
 
 // ------- Pie chart card (fixed) -------
 class PieCard extends StatelessWidget {
