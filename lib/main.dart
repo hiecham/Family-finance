@@ -902,124 +902,7 @@ class InvestmentsPage extends StatelessWidget {
   }
 }
 
-  ===== Goals (چک‌لیست اهداف خرید) =====
-class Goal {
-  final String id;
-  final String title;
-  final bool done;
-  const Goal({required this.id, required this.title, required this.done});
-
-  Goal copyWith({String? title, bool? done}) =>
-      Goal(id: id, title: title ?? this.title, done: done ?? this.done);
-
-  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'done': done};
-  factory Goal.fromJson(Map<String, dynamic> j) =>
-      Goal(id: j['id'], title: j['title'], done: j['done'] ?? false);
-}
-
-class GoalsStore {
-  static const _k = 'finance_goals';
-  static Future<List<Goal>> load() async {
-    final sp = await SharedPreferences.getInstance();
-    final raw = sp.getString(_k);
-    if (raw == null) return [];
-    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map(Goal.fromJson).toList();
-  }
-
-  static Future<void> save(List<Goal> items) async {
-    final sp = await SharedPreferences.getInstance();
-    await sp.setString(_k, jsonEncode(items.map((e) => e.toJson()).toList()));
-  }
-}
-
-class GoalsPage extends StatefulWidget {
-  const GoalsPage({super.key});
-  @override
-  State<GoalsPage> createState() => _GoalsPageState();
-}
-
-class _GoalsPageState extends State<GoalsPage> {
-  List<Goal> _items = [];
-  final _ctrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    _items = await GoalsStore.load();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _addGoal(String title) async {
-    final g = Goal(id: UniqueKey().toString(), title: title, done: false);
-    _items = [..._items, g];
-    await GoalsStore.save(_items);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _toggle(String id, bool? v) async {
-    _items = _items.map((g) => g.id == id ? g.copyWith(done: v ?? false) : g).toList();
-    await GoalsStore.save(_items);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _delete(String id) async {
-    _items = _items.where((g) => g.id != id).toList();
-    await GoalsStore.save(_items);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _openAddDialog() async {
-    _ctrl.clear();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('افزودن هدف'),
-        content: TextField(
-          controller: _ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'مثلاً: تلویزیون 55 اینچ'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('لغو')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('افزودن')),
-        ],
-      ),
-    );
-    if (ok == true && _ctrl.text.trim().isNotEmpty) {
-      await _addGoal(_ctrl.text.trim());
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('اهداف خرید')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-        children: [
-          if (_items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: Text('هنوز هدفی ثبت نشده. دکمه + پایین را بزنید')),
-            ),
-          ..._items.map((g) => Dismissible(
-                key: ValueKey('goal_${g.id}'),
-                background: Container(color: Colors.redAccent),
-                onDismissed: (_) => _delete(g.id),
-                child: CheckboxListTile(
-                  key: ValueKey('checkbox_${g.id}'),
-                  value: g.done,
-                  onChanged: (v) => _toggle(g.id, v),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(
-                    g.title,
-                    style: TextStyle(decoration: g.done ? TextDecoration.lineThrough : null),
-                  ),
+                    ),
                 ),
               )),
         ],
@@ -1097,8 +980,211 @@ class PieCard extends StatelessWidget {
     });
   }
 
+  /// ===== Goals (چک‌لیست اهداف خرید) =====
+
+class Goal {
+  final String id;
+  final String title;
+  final bool done;
+
+  Goal({required this.id, required this.title, required this.done});
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'done': done};
+  factory Goal.fromJson(Map<String, dynamic> j) =>
+      Goal(id: j['id'], title: j['title'], done: j['done'] ?? false);
+
+  Goal copyWith({String? id, String? title, bool? done}) =>
+      Goal(id: id ?? this.id, title: title ?? this.title, done: done ?? this.done);
+}
+
+class GoalsStore {
+  static const _k = 'finance_goals';
+
+  static Future<List<Goal>> load() async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString(_k);
+    if (raw == null) return [];
+    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    return list.map(Goal.fromJson).toList();
+  }
+
+  static Future<void> save(List<Goal> goals) async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = jsonEncode(goals.map((g) => g.toJson()).toList());
+    await sp.setString(_k, raw);
+  }
+}
+
+class GoalsPage extends StatefulWidget {
+  const GoalsPage({super.key});
+
+  @override
+  State<GoalsPage> createState() => _GoalsPageState();
+}
+
+class _GoalsPageState extends State<GoalsPage> {
+  List<Goal> _goals = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    _goals = await GoalsStore.load();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _addGoalDialog() async {
+    final ctrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('هدف خرید جدید'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(hintText: 'مثلاً: ماشین لباسشویی'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () async {
+              final t = ctrl.text.trim();
+              if (t.isEmpty) return;
+              final g = Goal(id: UniqueKey().toString(), title: t, done: false);
+              final list = [..._goals, g];
+              await GoalsStore.save(list);
+              if (!mounted) return;
+              setState(() => _goals = list);
+              Navigator.pop(context);
+            },
+            child: const Text('افزودن'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggle(String id, bool v) async {
+    final list = _goals.map((g) => g.id == id ? g.copyWith(done: v) : g).toList();
+    await GoalsStore.save(list);
+    if (mounted) setState(() => _goals = list);
+  }
+
+  Future<void> _delete(String id) async {
+    final list = _goals.where((g) => g.id != id).toList();
+    await GoalsStore.save(list);
+    if (mounted) setState(() => _goals = list);
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('اهداف خرید')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), // برای اینکه با FAB برخورد نکند
+        children: [
+          if (_goals.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Center(child: Text('هنوز هدفی ثبت نشده. دکمه + پایین را بزنید.')),
+            )
+          else
+            ..._goals.map((g) => Dismissible(
+                  key: ValueKey(g.id),
+                  background: Container(color: Colors.redAccent),
+                  onDismissed: (_) => _delete(g.id),
+                  child: CheckboxListTile(
+                    key: ValueKey('checkbox_${g.id}'),
+                    value: g.done,
+                    onChanged: (v) => _toggle(g.id, v ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      g.title,
+                      style: TextStyle(
+                        decoration: g.done ? TextDecoration.lineThrough : TextDecoration.none,
+                      ),
+                    ),
+                    subtitle: g.done ? const Text('انجام شد!') : null,
+                  ),
+                )),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 20), // کمی بالاتر بیاید که روی چیزها نیفتد
+        child: FloatingActionButton.large(
+          onPressed: _addGoalDialog,
+          child: const Icon(Icons.add),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+}
+
+/// ===== Settings =====
+class SettingsPage extends StatelessWidget {
+  final Future<void> Function()? onClear;
+  const SettingsPage({super.key, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تنظیمات')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('دسته‌بندی‌ها ثابت هستند (فعلاً)'),
+            subtitle: Text('در نسخه بعدی می‌توانید دسته جدید اضافه کنید.'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_forever),
+            label: const Text('حذف همه داده‌ها'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ===== Pie Card Widget (وابسته به fl_chart) =====
+class PieCard extends StatelessWidget {
+  final String title;
+  /// Map از «برچسب» به «مقدار»
+  final Map<String, double> values;
+
+  const PieCard({super.key, required this.title, required this.values});
+
+  Color _colorFor(int i) {
+    const palette = [
+      Color(0xFF26A69A),
+      Color(0xFF42A5F5),
+      Color(0xFFAB47BC),
+      Color(0xFF7CB342),
+      Color(0xFFFF7043),
+      Color(0xFFFFC107),
+      Color(0xFF5C6BC0),
+      Color(0xFFEF5350),
+    ];
+    return palette[i % palette.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // فرمت محلی برای جداکننده سه‌رقمی - محلی (در همین ویجت تا با توابع دیگر تداخل نکند)
+    String fmtLocal(double v) {
+      final s = v.toStringAsFixed(0);
+      final r = RegExp(r'\B(?=(\d{3})+(?!\d))');
+      return s.replaceAllMapped(r, (m) => ',');
+    }
+
+    final entries = values.entries.toList();
     final total = values.values.fold<double>(0, (p, v) => p + v);
 
     return Card(
@@ -1119,7 +1205,22 @@ class PieCard extends StatelessWidget {
                       PieChartData(
                         sectionsSpace: 2,
                         centerSpaceRadius: 32,
-                        sections: _sections(),
+                        sections: List.generate(entries.length, (i) {
+                          final e = entries[i];
+                          final value = e.value;
+                          final percent = total == 0 ? 0 : (value / total * 100);
+                          return PieChartSectionData(
+                            color: _colorFor(i),
+                            value: value,
+                            title: '${percent.toStringAsFixed(0)}%',
+                            titleStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            radius: 60,
+                          );
+                        }),
                       ),
                     ),
                   ),
@@ -1127,25 +1228,82 @@ class PieCard extends StatelessWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
-                    children: values.entries.toList().asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final e = entry.value;
+                    children: List.generate(entries.length, (i) {
+                      final e = entries[i];
                       return Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
                             width: 10,
                             height: 10,
-                            decoration: BoxDecoration(color: _colorFor(i), shape: BoxShape.circle),
+                            decoration: BoxDecoration(
+                              color: _colorFor(i),
+                              shape: BoxShape.circle,
+                            ),
                           ),
                           const SizedBox(width: 6),
-                          Text('${e.key}: ${fmt(e.value)}'),
+                          Text('${e.key}: ${fmtLocal(e.value)}'),
                         ],
                       );
-                    }).toList(),
+                    }),
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// ===== صفحه سرمایه‌گذاری =====
+class InvestmentsPage extends StatelessWidget {
+  final List<FinanceEntry> entries;
+  const InvestmentsPage({super.key, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final inv = entries.where((e) => e.type == EntryType.investment).toList();
+
+    // جمع به تفکیک نوع (بر حسب InvestmentType)
+    final byType = <InvestmentType, double>{};
+    for (final e in inv) {
+      final k = e.investmentType ?? InvestmentType.other;
+      byType[k] = (byType[k] ?? 0) + e.amount;
+    }
+
+    // برچسب‌های فارسیِ انواع سرمایه‌گذاری
+    String vt(InvestmentType t) => {
+          InvestmentType.gold: 'طلا',
+          InvestmentType.stocks: 'بورس/صندوق',
+          InvestmentType.crypto: 'کریپتو',
+          InvestmentType.other: 'متفرقه',
+        }[t]!;
+
+    // تبدیل به Map<String,double> برای PieCard
+    final mapForPie = <String, double>{
+      for (final e in byType.entries) vt(e.key): e.value,
+    };
+
+    // فرمت عدد محلی
+    String fmtLocal(double v) {
+      final s = v.toStringAsFixed(0);
+      final r = RegExp(r'\B(?=(\d{3})+(?!\d))');
+      return s.replaceAllMapped(r, (m) => ',');
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('سرمایه‌گذاری')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          PieCard(title: 'نمودار سرمایه‌گذاری', values: mapForPie),
+          const SizedBox(height: 8),
+          ...inv.map((e) => ListTile(
+                leading: const Icon(Icons.trending_up),
+                title: Text(fmtLocal(e.amount)),
+                subtitle: Text(vt(e.investmentType ?? InvestmentType.other)),
+                trailing: Text('${e.date.year}/${e.date.month}/${e.date.day}'),
+              )),
+        ],
       ),
     );
   }
