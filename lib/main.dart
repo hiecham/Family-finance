@@ -1,8 +1,10 @@
-// Family Finance — full single-file app
-// Features: income/expense/saving/investment, delete per item,
-// goals checklist, number formatting, pie charts (fl_chart), local persistence.
+// Family Finance — full single-file app (stable IDs + safe keys)
+// Features: income/expense/saving/investment, per-item delete,
+// goals checklist (independent state), number formatting, pie charts,
+// local persistence via SharedPreferences.
 
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -118,6 +120,11 @@ String fmt(double v) {
   final r = RegExp(r'\B(?=(\d{3})+(?!\d))');
   return s.replaceAllMapped(r, (m) => ',');
 }
+
+/// ==== ID generator (stable, unique) ====
+final Random _rand = Random();
+String newId() =>
+    '${DateTime.now().microsecondsSinceEpoch.toString()}-${_rand.nextInt(0x7fffffff)}';
 
 /// ==== Root with bottom navigation ====
 class RootPage extends StatefulWidget {
@@ -237,7 +244,7 @@ class DashboardPage extends StatelessWidget {
           const Text('آخرین تراکنش‌ها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           ...entries.take(10).map((e) => Dismissible(
-                key: ValueKey(e.id),
+                key: ValueKey('dash_${e.id}'), // کلید یکتا و پایدار
                 background: Container(color: Colors.redAccent),
                 onDismissed: (_) => onDelete(e.id),
                 child: _EntryTile(e),
@@ -329,6 +336,7 @@ class _EntryTile extends StatelessWidget {
     ].join(' · ');
 
     return ListTile(
+      key: ValueKey('tile_${e.id}'), // جلوگیری از reuse اشتباه
       leading: CircleAvatar(child: Icon(icon)),
       title: Text(fmt(e.amount)),
       subtitle: Text(subtitle),
@@ -380,7 +388,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
     switch (_type) {
       case EntryType.income:
         e = FinanceEntry(
-          id: UniqueKey().toString(),
+          id: newId(),
           type: EntryType.income,
           date: _date,
           amount: amount,
@@ -389,7 +397,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
         break;
       case EntryType.expense:
         e = FinanceEntry(
-          id: UniqueKey().toString(),
+          id: newId(),
           type: EntryType.expense,
           date: _date,
           amount: amount,
@@ -399,7 +407,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
         break;
       case EntryType.saving:
         e = FinanceEntry(
-          id: UniqueKey().toString(),
+          id: newId(),
           type: EntryType.saving,
           date: _date,
           amount: amount,
@@ -410,7 +418,7 @@ class _AddEntryPageState extends State<AddEntryPage> {
         break;
       case EntryType.investment:
         e = FinanceEntry(
-          id: UniqueKey().toString(),
+          id: newId(),
           type: EntryType.investment,
           date: _date,
           amount: amount,
@@ -567,10 +575,11 @@ class ExpensesPage extends StatelessWidget {
           if (byCat.isNotEmpty) PieCard(title: 'نمودار هزینه‌ها', values: byCat),
           const SizedBox(height: 8),
           ...expenses.map((e) => Dismissible(
-                key: ValueKey(e.id),
+                key: ValueKey('exp_${e.id}'),
                 background: Container(color: Colors.redAccent),
                 onDismissed: (_) => onDelete(e.id),
                 child: ListTile(
+                  key: ValueKey('tile_exp_${e.id}'),
                   leading: const Icon(Icons.south_west),
                   title: Text(fmt(e.amount)),
                   subtitle: Text(e.expenseCategory ?? 'متفرقه'),
@@ -677,10 +686,11 @@ class InvestmentsPage extends StatelessWidget {
           const SizedBox(height: 8),
           ...inv.map(
             (e) => Dismissible(
-              key: ValueKey(e.id),
+              key: ValueKey('inv_${e.id}'),
               background: Container(color: Colors.redAccent),
               onDismissed: (_) => onDelete(e.id),
               child: ListTile(
+                key: ValueKey('tile_inv_${e.id}'),
                 leading: const Icon(Icons.trending_up),
                 title: Text(fmt(e.amount)),
                 subtitle: Text(_vt(e.investmentType ?? InvestmentType.other)),
@@ -695,6 +705,7 @@ class InvestmentsPage extends StatelessWidget {
 }
 
 /// ==== Goals (Checklist) ====
+// ثابت: کلیدها/IDهای پایدار برای جلوگیری از سرایت تیک‌ها
 class Goal {
   final String id;
   final String title;
@@ -756,14 +767,19 @@ class _GoalsPageState extends State<GoalsPage> {
       ),
     );
     if (ok == true && c.text.trim().isNotEmpty) {
-      setState(() => _goals = [..._goals, Goal(id: UniqueKey().toString(), title: c.text.trim(), done: false)]);
+      setState(() => _goals = [
+            ..._goals,
+            Goal(id: newId(), title: c.text.trim(), done: false),
+          ]);
       await GoalsStore.save(_goals);
     }
   }
 
   Future<void> _toggle(String id, bool v) async {
     setState(() {
-      _goals = _goals.map((g) => g.id == id ? Goal(id: g.id, title: g.title, done: v) : g).toList();
+      _goals = _goals
+          .map((g) => g.id == id ? Goal(id: g.id, title: g.title, done: v) : g)
+          .toList();
     });
     await GoalsStore.save(_goals);
   }
@@ -787,16 +803,19 @@ class _GoalsPageState extends State<GoalsPage> {
             )
           else
             ..._goals.map((g) => Dismissible(
-                  key: ValueKey(g.id),
+                  key: ValueKey('goal_${g.id}'),
                   background: Container(color: Colors.redAccent),
                   onDismissed: (_) => _delete(g.id),
                   child: CheckboxListTile(
+                    key: ValueKey('goalcb_${g.id}'), // کلید مستقل برای جلوگیری از سرایت state
                     value: g.done,
                     onChanged: (v) => _toggle(g.id, v ?? false),
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(
                       g.title,
-                      style: TextStyle(decoration: g.done ? TextDecoration.lineThrough : null),
+                      style: TextStyle(
+                        decoration: g.done ? TextDecoration.lineThrough : null,
+                      ),
                     ),
                     subtitle: g.done ? const Text('انجام شد!') : null,
                   ),
