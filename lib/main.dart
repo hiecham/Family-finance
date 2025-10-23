@@ -103,14 +103,16 @@ class Store {
   }
 }
 
+// ===== Root (Bottom Nav) =====
 class RootPage extends StatefulWidget {
   const RootPage({super.key});
+
   @override
   State<RootPage> createState() => _RootPageState();
 }
 
 class _RootPageState extends State<RootPage> {
-  int _idx = 0;
+  int _index = 0;
   List<FinanceEntry> _entries = [];
 
   @override
@@ -119,55 +121,105 @@ class _RootPageState extends State<RootPage> {
     _refresh();
   }
 
+  // --- data ops ---
   Future<void> _refresh() async {
     final data = await Store.load();
     setState(() => _entries = data);
   }
 
-  void _addEntry(FinanceEntry e) async {
-    final list = [..._entries, e];
-    list.sort((a, b) => b.date.compareTo(a.date));
+  Future<void> _clearAll() async {
+    await Store.save([]);
+    setState(() => _entries = []);
+  }
+
+  Future<void> _add(FinanceEntry e) async {
+    final list = [..._entries, e]..sort((a, b) => b.date.compareTo(a.date));
     await Store.save(list);
     setState(() => _entries = list);
   }
 
-  void _delete(String id) async {
+  Future<void> _delete(String id) async {
     final list = _entries.where((e) => e.id != id).toList();
+    await Store.save(list);
+    setState(() => _entries = list);
+  }
+
+  Future<void> _update(FinanceEntry updated) async {
+    final list = _entries.map((e) => e.id == updated.id ? updated : e).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
     await Store.save(list);
     setState(() => _entries = list);
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    // توجه: فقط جایی که لازم است پارامتر اضافه می‌دهیم (مثل onDelete برای هزینه‌ها)
+    final pages = <Widget>[
       DashboardPage(entries: _entries, onRefresh: _refresh),
-      AddEntryHub(onAdd: _addEntry),
-      ExpensesPage(entries: _entries, onDelete: _delete),
+
+      // اگر صفحه‌های افزودن جدا داری (AddIncomePage / AddExpensePage / AddSavingPage / AddInvestmentPage)
+      // می‌تونی یک هاب ساده اینجا بسازی که به اون‌ها ناوبری کند. برای سادگی، فقط یک صفحه‌ی افزودن عمومی:
+      AddEntryPage( // اگر این صفحه را ندارید، می‌توانید حذفش کنید و مقصدهای دیگر را بچینید
+        onAdd: _add,
+      ),
+
+      ExpensesPage(
+        entries: _entries,
+        onDelete: _delete, // این صفحه حذف نیاز دارد
+      ),
+
       SavingsPage(entries: _entries),
-      InvestmentsPage(entries: _entries, onDelete: _delete),
-      GoalsPage(),
-      const SettingsPage(),
+
+      InvestmentsPage(entries: _entries), // طبق خطای قبلی این صفحه فقط entries می‌گیرد
+
+      GoalsPage(), // اهداف خرید چک لیستی، سازنده‌اش بدون پارامتر است
+
+      SettingsPage(
+        onClear: _clearAll, // پاک‌کردن همه داده‌ها
+      ),
     ];
 
     return Scaffold(
-      body: SafeArea(child: pages[_idx]),
+      body: SafeArea(child: pages[_index]),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _idx,
-        onDestinationSelected: (i) => setState(() => _idx = i),
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        // مقصدها را با آیکون‌ها و برچسب‌های فارسی هماهنگ کردم
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'داشبورد'),
-          NavigationDestination(icon: Icon(Icons.add_circle_outline), label: 'افزودن'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'هزینه‌ها'),
-          NavigationDestination(icon: Icon(Icons.savings_outlined), label: 'پس‌انداز'),
-          NavigationDestination(icon: Icon(Icons.trending_up_outlined), label: 'سرمایه‌گذاری'),
-          NavigationDestination(icon: Icon(Icons.checklist_outlined), label: 'اهداف'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'تنظیمات'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            label: 'داشبورد',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_circle_outline),
+            label: 'افزودن',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'هزینه‌ها',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.savings_outlined),
+            label: 'پس‌انداز',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.trending_up_outlined),
+            label: 'سرمایه‌گذاری',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.checklist_outlined),
+            label: 'اهداف خرید',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            label: 'تنظیمات',
+          ),
         ],
       ),
     );
   }
 }
-
+          
 /// ===== Add Hub (entry) =====
 class AddEntryHub extends StatelessWidget {
   final void Function(FinanceEntry) onAdd;
